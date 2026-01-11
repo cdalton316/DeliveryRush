@@ -18,9 +18,16 @@ export default class LevelCompleteScene extends Phaser.Scene {
     // Show stats if provided
     const stats = data && data.stats ? data.stats : {};
     this.add
-      .text(400, 260, `Score: ${stats.score || 0}`, {
+      .text(400, 260, `Total Score: ${stats.score || 0}`, {
         font: "32px Arial",
         fill: "#fff",
+        align: "center",
+      })
+      .setOrigin(0.5);
+    this.add
+      .text(400, 295, `Level Score: ${stats.levelScore || 0}`, {
+        font: "24px Arial",
+        fill: "#ff0",
         align: "center",
       })
       .setOrigin(0.5);
@@ -45,9 +52,12 @@ export default class LevelCompleteScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true })
       .on("pointerdown", () => {
         this.scene.stop();
-        // Pass next level number to GameScene
+        // Pass next level number and running totalScore to GameScene
         const nextLevel = (stats.level || 1) + 1;
-        this.scene.start("GameScene", { level: nextLevel });
+        this.scene.start("GameScene", {
+          level: nextLevel,
+          totalScore: stats.score,
+        });
       })
       .on("pointerover", () =>
         nextText.setStyle({ fill: "#fff", backgroundColor: "#555" })

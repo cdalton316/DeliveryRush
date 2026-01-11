@@ -18,16 +18,57 @@ export default class GameOverScene extends Phaser.Scene {
     // Show stats if provided
     const stats = data && data.stats ? data.stats : {};
     this.add
-      .text(400, 280, `Score: ${stats.score || 0}`, {
+      .text(400, 240, `Distance: ${stats.distance ?? 0}m`, {
+        font: "28px Arial",
+        fill: "#fff",
+        align: "center",
+      })
+      .setOrigin(0.5);
+    this.add
+      .text(400, 280, `Total Score: ${stats.score ?? 0}`, {
         font: "32px Arial",
         fill: "#fff",
         align: "center",
       })
       .setOrigin(0.5);
+    this.add
+      .text(400, 315, `Level Score: ${stats.levelScore ?? 0}`, {
+        font: "24px Arial",
+        fill: "#ff0",
+        align: "center",
+      })
+      .setOrigin(0.5);
+    this.add
+      .text(400, 350, `Level Reached: ${stats.level ?? 1}`, {
+        font: "28px Arial",
+        fill: "#fff",
+        align: "center",
+      })
+      .setOrigin(0.5);
+    // High score display
+    const highScore =
+      stats.highScore ?? parseInt(localStorage.getItem("highScore") || "0", 10);
+    if ((stats.score ?? 0) >= highScore) {
+      this.add
+        .text(400, 390, `New High Score!`, {
+          font: "28px Arial",
+          fill: "#00ff99",
+          align: "center",
+        })
+        .setOrigin(0.5);
+    } else {
+      this.add
+        .text(400, 390, `High Score: ${highScore}`, {
+          font: "28px Arial",
+          fill: "#ffcc00",
+          align: "center",
+        })
+        .setOrigin(0.5);
+    }
 
     // Restart button
     const restartText = this.add
-      .text(400, 380, "Try Again", {
+      .text(400, 440, "Try Again", {
         font: "32px Arial",
         fill: "#ff0",
         backgroundColor: "#333",
@@ -49,7 +90,7 @@ export default class GameOverScene extends Phaser.Scene {
 
     // Main Menu button
     const menuText = this.add
-      .text(400, 440, "Main Menu", {
+      .text(400, 500, "Main Menu", {
         font: "28px Arial",
         fill: "#fff",
         backgroundColor: "#333",

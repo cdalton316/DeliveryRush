@@ -37,6 +37,45 @@ export default class GameScene extends Phaser.Scene {
   }
 
   create(data) {
+    // --- Difficulty Multiplier UI ---
+    // Level cap for scaling
+    const cappedLevel = Math.min(data && data.level ? data.level : 1, 10);
+    this.difficultyMultiplier = 1 + 0.1 * (cappedLevel - 1);
+    this.difficultyText = this.add
+      .text(400, 30, `Difficulty: x${this.difficultyMultiplier.toFixed(1)}`, {
+        font: "22px Arial",
+        fill: this.difficultyMultiplier > 1 ? "#ff4444" : "#fff",
+        align: "center",
+        backgroundColor: this.difficultyMultiplier > 1 ? "#222" : "#0000",
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0);
+
+    // Show a visual indicator at level start if difficulty > 1
+    if (this.difficultyMultiplier > 1) {
+      const indicator = this.add
+        .text(
+          400,
+          200,
+          `Enemies are FASTER! (x${this.difficultyMultiplier.toFixed(1)})`,
+          {
+            font: "bold 32px Arial",
+            fill: "#ff4444",
+            align: "center",
+            backgroundColor: "#222",
+          }
+        )
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(100);
+      this.tweens.add({
+        targets: indicator,
+        alpha: 0,
+        duration: 1800,
+        delay: 1200,
+        onComplete: () => indicator.destroy(),
+      });
+    }
     // --- Camera and World Bounds ---
     // Extend world width to allow camera scrolling
     // Start with world size 1600px wide (2x screen width)
@@ -107,6 +146,8 @@ export default class GameScene extends Phaser.Scene {
     this.levelCompleteTriggered = false;
     // Distance and score system
     this.distance = 0;
+    this.totalScore =
+      data && typeof data.totalScore === "number" ? data.totalScore : 0;
     this.highScore = parseInt(localStorage.getItem("highScore") || "0", 10);
     this.distanceText = this.add
       .text(400, 100, `Distance: 0m`, {
@@ -116,9 +157,17 @@ export default class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setScrollFactor(0);
-    this.highScoreText = this.add
-      .text(400, 130, `High Score: ${this.highScore}m`, {
+    this.scoreText = this.add
+      .text(400, 130, `Score: ${this.totalScore}`, {
         font: "20px Arial",
+        fill: "#ff0",
+        align: "center",
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0);
+    this.highScoreText = this.add
+      .text(400, 160, `High Score: ${this.highScore}m`, {
+        font: "18px Arial",
         fill: "#ff0",
         align: "center",
       })
@@ -127,7 +176,8 @@ export default class GameScene extends Phaser.Scene {
     // Enemy group and spawn timer setup
     this.enemies = this.physics.add.group();
     this.enemySpawnTimer = 0;
-    this.enemySpawnInterval = 1500; // ms
+    // Difficulty scaling: base interval, will decrease after level 3
+    this.enemySpawnInterval = 1500;
 
     // Wave system
     this.wave = 1;
@@ -143,11 +193,30 @@ export default class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setScrollFactor(0);
 
+    // Difficulty scaling logic for waves
     this.startWave = () => {
       this.waveActive = true;
       this.waveEnemies = [];
-      // Spawn 2-3 enemies at least 100px to the right of the player
-      const numEnemies = Phaser.Math.Between(2, 3);
+      // --- Difficulty scaling ---
+      const cappedLevel = Math.min(this.level, 10);
+      let minEnemies = 2;
+      let maxEnemies = 3;
+      if (cappedLevel > 3) {
+        minEnemies = 3;
+        maxEnemies = 5;
+      }
+      const numEnemies = Phaser.Math.Between(minEnemies, maxEnemies);
+      this.enemySpawnInterval = 1500;
+      if (cappedLevel > 3) {
+        this.enemySpawnInterval = Math.max(700, 1500 - (cappedLevel - 3) * 100);
+      }
+      const speedMultiplier = 1 + 0.1 * (cappedLevel - 1);
+      this.difficultyMultiplier = speedMultiplier;
+      this.difficultyText.setText(`Difficulty: x${speedMultiplier.toFixed(1)}`);
+      this.difficultyText.setFill(speedMultiplier > 1 ? "#ff4444" : "#fff");
+      this.difficultyText.setBackgroundColor(
+        speedMultiplier > 1 ? "#222" : "#0000"
+      );
       const minSpawnX = Math.max(
         this.cameras.main.worldView.right,
         this.player.x + 100
@@ -157,9 +226,26 @@ export default class GameScene extends Phaser.Scene {
         const type = getRandomEnemyType();
         const x = minSpawnX + i * 30;
         if (x > this.player.x) {
-          const enemy = new Enemy(this, x, y, type);
+          // Clone type and scale speed
+          const scaledType = {
+            ...type,
+            speed: Math.round(type.speed * speedMultiplier),
+          };
+          const enemy = new Enemy(this, x, y, scaledType);
           enemy.spawnX = x;
           enemy.hasPassed = false; // Track if enemy has passed player
+          // --- Visual indicator for fast enemies ---
+          if (speedMultiplier > 1) {
+            enemy.setStrokeStyle(3, 0xff4444);
+            this.tweens.add({
+              targets: enemy,
+              alpha: 0.5,
+              yoyo: true,
+              repeat: 2,
+              duration: 120,
+              onComplete: () => enemy.setAlpha(1),
+            });
+          }
           this.enemies.add(enemy);
           this.waveEnemies.push(enemy);
         }
@@ -222,7 +308,7 @@ export default class GameScene extends Phaser.Scene {
     this.orbitBox.body.setImmovable(true);
 
     // Player lives and invincibility
-    this.lives = 20;
+    this.lives = 7;
     this.invincible = false;
     this.invincibleTimer = null;
 
@@ -253,13 +339,48 @@ export default class GameScene extends Phaser.Scene {
       });
       // Game over if lives <= 0
       if (this.lives <= 0) {
-        this.scene.start("GameOverScene", { stats: { score: 0 } });
+        const bonus = 0;
+        const levelScore = Math.floor(this.distance) + bonus;
+        // Add this level's score to the running total
+        this.totalScore += levelScore;
+        const highScore = parseInt(
+          localStorage.getItem("highScore") || "0",
+          10
+        );
+        if (this.totalScore > highScore) {
+          localStorage.setItem("highScore", this.totalScore);
+        }
+        this.scene.start("GameOverScene", {
+          stats: {
+            score: this.totalScore,
+            levelScore,
+            distance: Math.floor(this.distance),
+            lives: 0,
+            bonus,
+            level: this.level,
+            highScore: Math.max(this.totalScore, highScore),
+          },
+        });
       }
       console.log("Box hit by enemy!");
     });
     this.physics.add.overlap(this.player, this.enemies, (player, enemy) => {
       // Enemy passes through player (no penalty)
       console.log("Enemy passed through player.");
+    });
+
+    // Pause functionality
+    this.input.keyboard.on("keydown-ESC", () => {
+      if (!this.scene.isPaused("GameScene")) {
+        this.scene.launch("PauseScene");
+        this.scene.pause();
+      }
+    });
+    this.input.keyboard.on("keydown-P", () => {
+      if (!this.scene.isPaused("GameScene")) {
+        this.scene.launch("PauseScene");
+        this.scene.pause();
+      }
     });
 
     // Remove nextExtensionX logic, use fixed distance from right edge for extension
@@ -302,9 +423,10 @@ export default class GameScene extends Phaser.Scene {
     }
     this.distance += speed * (delta / 16.67); // ~60fps base
     this.distanceText.setText(`Distance: ${Math.floor(this.distance)}m`);
+    this.scoreText.setText(`Score: ${this.totalScore}`);
     // Update high score if needed
-    if (this.distance > this.highScore) {
-      this.highScore = Math.floor(this.distance);
+    if (this.totalScore > this.highScore) {
+      this.highScore = this.totalScore;
       this.highScoreText.setText(`High Score: ${this.highScore}m`);
       localStorage.setItem("highScore", this.highScore);
     }
@@ -380,14 +502,19 @@ export default class GameScene extends Phaser.Scene {
         this.levelCompleteTriggered = true;
         // Calculate bonus points (e.g., lives * 100)
         const bonus = this.lives * 100;
-        const score = Math.floor(this.distance) + bonus;
+        const levelScore = Math.floor(this.distance) + bonus;
+        this.totalScore += levelScore;
         // Save high score if needed
-        if (score > parseInt(localStorage.getItem("highScore") || "0", 10)) {
-          localStorage.setItem("highScore", score);
+        if (
+          this.totalScore >
+          parseInt(localStorage.getItem("highScore") || "0", 10)
+        ) {
+          localStorage.setItem("highScore", this.totalScore);
         }
         this.scene.start("LevelCompleteScene", {
           stats: {
-            score,
+            score: this.totalScore,
+            levelScore,
             distance: Math.floor(this.distance),
             lives: this.lives,
             bonus,
